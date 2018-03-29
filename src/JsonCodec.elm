@@ -159,8 +159,7 @@ constructs ```Json.Encoder.Value``` with ```encoder```.
 type alias Codec a = (JD.Decoder a, a -> JE.Value)
 
 {-| Type of a codec builder used with ```first```, ```next``` and ```end``` -}
-type Builder v o
-    = Builder (JD.Decoder v) (o -> List (String, JE.Value))
+type Builder a b = CB a b
 
 {-| Codec matching and producing strings. -}
 string : Codec String
@@ -502,18 +501,54 @@ restEnc : String -> (v -> JE.Value) -> (o -> v) -> (o -> List (String,JE.Value))
 restEnc field enc extract prev =
     \v -> (field, enc (extract v)) :: (prev v)
 
-first : String -> Codec v -> (o -> v) -> (v -> b) -> (JD.Decoder b, o -> List (String, JE.Value))
+{-| Start composing a codec to decode a record using a series of function
+applications.
+
+Using:
+
+- A field name
+- A function that decodes the value ```v``` in that field
+- A function that extracts the field value ```v``` from the finished record
+- A record building function such as a type alias constructor 
+(we'll call this ```o```)
+
+Return:
+
+- A partially constructed decoder, which given the rest of the parameters 
+for ```o```, yields a ```Codec o```.
+
+You can build record codecs of arbitrarily many parameters with this, the same
+way other codecs are built, together using the same code.
+
+An example:
+
+    type alias X = { i : Int, s : String, b : Bool, f : Float }
+    c =  JC.first "i" JC.int .i X 
+      |> JC.next "s" JC.string .s
+      |> JC.next "b" JC.bool .b
+      |> JC.next "f" JC.float .f
+      |> JC.end
+
+    > JD.decodeString (JC.decoder c) "{\"i\":3,\"s\":\"hi\",\"b\":false,\"f\":1.9}"
+    Ok { i = 3, s = "hi", b = False, f = 1.9 } : Result.Result String Repl.X
+
+-}
+first : String -> Codec v -> (o -> v) -> (v -> b) -> Builder (JD.Decoder b) (o -> List (String, JE.Value))
 first field cod extract inp =
-    ( firstDec field (decoder cod) inp
-    , firstEnc field (encoder cod) extract
-    )
+    CB
+        (firstDec field (decoder cod) inp)
+        (firstEnc field (encoder cod) extract)
 
-next : String -> Codec v -> (o -> v) -> (JD.Decoder (v -> b), o -> List (String, JE.Value)) -> (JD.Decoder b, o -> List (String, JE.Value))
-next field cod extract (dd,ee) =
-    ( restDec field (decoder cod) dd
-    , restEnc field (encoder cod) extract ee
-    )
+{-| Continue a partial codec from first, satisfying one more parameter of the
+constructor function.
+-}
+next : String -> Codec v -> (o -> v) -> Builder (JD.Decoder (v -> b)) (o -> List (String, JE.Value)) -> Builder (JD.Decoder b) (o -> List (String, JE.Value))
+next field cod extract (CB dd ee) =
+    CB
+        (restDec field (decoder cod) dd)
+        (restEnc field (encoder cod) extract ee)
 
-end : (JD.Decoder o, o -> List (String,JE.Value)) -> Codec o
-end (dec,enc) =
+{-| Make the final step to turn a result from Builder into Codec. -}
+end : Builder (JD.Decoder o) (o -> List (String,JE.Value)) -> Codec o
+end (CB dec enc) =
     init dec (\v -> enc v |> JE.object)
