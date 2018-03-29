@@ -141,7 +141,7 @@ To just specify a decoder and encoder separately, use ```init```.
 # Construction
 @docs decoder, encoder, init
 
-# Applicative
+# Application
 @docs first, next, end
 
 -}
@@ -472,7 +472,7 @@ encoder = Tuple.second
 init : JD.Decoder a -> (a -> JE.Value) -> Codec a
 init = (,)
 
-{-| Applicative style codec creation.  Provide a field at a time to build up an
+{-| Application style codec creation.  Provide a field at a time to build up an
 arbitrarily large codec.  Start with first, use next to add fields in the middle
 and then convert it into a codec with end.
 
