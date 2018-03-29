@@ -1,5 +1,6 @@
 module JsonCodec exposing
     ( Codec
+    , Builder
     , string
     , bool
     , int
@@ -26,8 +27,9 @@ module JsonCodec exposing
     , decoder
     , encoder
     , init
-    , fold
-    , foldField
+    , first
+    , next
+    , end
     )
 
 {-| Build json decoders and encoders simultaneously, conserving the need for
@@ -110,29 +112,21 @@ To just specify a decoder and encoder separately, use ```init```.
             ("playing", playingSerializer)
             ("like", JsonCodec.dict JsonCodec.int)
 
-    -- An example of using fold to create the same codec.
-    foldcoder : Codec Session
-    foldcoder =
-        let setQueue q s = { s | queue = q } in
-        let setPlaying p s = { s | playing = p } in
-        let setLikeCats l s = { s | likeCategories = l } in
-        JsonCodec.fold
-            [ JsonCodec.foldField "queue"
-                (setQueue, JD.list JD.string)
-                (.queue >> List.map JE.string >> JE.list)
-            , JsonCodec.foldField "playing"
-                (setPlaying, JsonCodec.decoder playingSerializer)
-                (.playing >> JsonCodec.encoder playingSerializer)
-            , JsonCodec.foldField "like"
-                (setLikeCats, JD.dict JD.int)
-                (.likeCategories
-                >> Dict.map (always JE.int) >> Dict.toList >> JE.object
-                )
-            ]
-            { queue = [], playing = Nothing, likeCategories = Dict.empty }
+    -- Codec built in applicative style
+    type alias Test = { i : Int, b : Bool, f : Float, s : String }
+
+    codec = 
+        Test
+        |> JC.first "i" JC.int .i
+        |> JC.next "b" JC.bool .b
+        |> JC.next "f" JC.float .f
+        |> JC.end "s" JC.string .s
+
+    x = JD.decodeString (JC.decoder be) "{\"i\":3,\"b\":false,\"f\":3.14,\"s\":\"hi there\"}"
+    -- Ok { i = 3, b = False, f = 3.14, s = "hi there" }
 
 # Type
-@docs Codec
+@docs Codec, Builder
 
 # Simple codecs
 @docs string, bool, int, float, nullable, list, array, dict, keyValuePairs, singleton, object2, object3, object4, object5, object6, object7, object8, null, succeed, fail
@@ -146,8 +140,8 @@ To just specify a decoder and encoder separately, use ```init```.
 # Construction
 @docs decoder, encoder, init
 
-# Folding Construction
-@docs fold, foldField
+# Applicative
+@docs first, next, end
 
 -}
 
@@ -163,6 +157,10 @@ You can extract a Json.Decode.Decoder with ```decoder``` and a function that
 constructs ```Json.Encoder.Value``` with ```encoder```.
 -}
 type alias Codec a = (JD.Decoder a, a -> JE.Value)
+
+{-| Type of a codec builder used with ```first```, ```next``` and ```end``` -}
+type Builder v o
+    = Builder (JD.Decoder v) (o -> List (String, JE.Value))
 
 {-| Codec matching and producing strings. -}
 string : Codec String
@@ -474,65 +472,48 @@ encoder = Tuple.second
 init : JD.Decoder a -> (a -> JE.Value) -> Codec a
 init = (,)
 
-{-| Construct a field value for use with ```fold```.
+{-| Applicative style codec creation.  Provide a field at a time to build up an
+arbitrarily large codec.  Start with first, use next to add fields in the middle
+and then convert it into a codec with end.
 
-* ```name``` specifies the name of a field that will be matched and produced.
+    type alias Test = { i : Int, b : Bool, f : Float, s : String }
 
-* ```(update, decoder)``` specifies an update function and a decoder.
-The update function is given the new value and the current state of the object
-and returns a mutated object.
+    codec = 
+        Test
+        |> JC.first "i" JC.int .i
+        |> JC.next "b" JC.bool .b
+        |> JC.next "f" JC.float .f
+        |> JC.end "s" JC.string .s
 
-* ```extract``` specifies a function that encodes this field's json value.
-
+    x = JD.decodeString (JC.decoder be) "{\"i\":3,\"b\":false,\"f\":3.14,\"s\":\"hi there\"}"
+    -- Ok { i = 3, b = False, f = 3.14, s = "hi there" }
 -}
-foldField : String -> (v -> a -> a, JD.Decoder v) -> (a -> JE.Value) -> (String, JD.Value -> a -> Result String a, a -> JE.Value)
-foldField name (update,decoder) extract =
-    ( name
-    , \v a -> (JD.decodeValue (JD.field name decoder) v) |> Result.map (\v -> update v a)
-    , extract
+firstDec : String -> JD.Decoder a -> (a -> b) -> JD.Decoder b
+firstDec field dec inp = JD.map inp (JD.field field dec)
+
+restDec : String -> JD.Decoder x -> JD.Decoder (x -> y) -> JD.Decoder y
+restDec field db da = JD.andThen (\sas -> JD.map sas (JD.field field db)) da
+
+firstEnc : String -> (v -> JE.Value) -> (o -> v) -> (o -> List (String,JE.Value))
+firstEnc field enc extract =
+    \v -> [(field, enc (extract v))]
+
+restEnc : String -> (v -> JE.Value) -> (o -> v) -> (o -> List (String,JE.Value)) -> (o -> List (String,JE.Value))
+restEnc field enc extract prev =
+    \v -> (field, enc (extract v)) :: (prev v)
+
+first : String -> Codec v -> (o -> v) -> (v -> b) -> (JD.Decoder b, o -> List (String, JE.Value))
+first field cod extract inp =
+    ( firstDec field (decoder cod) inp
+    , firstEnc field (encoder cod) extract
     )
 
-{-| Produce a codec that uses a list of fields and codecs to fold new values
-into an object, producing a new object with the json loaded on to it.
-
-This can be used to consume delta updates from a channel, create codecs that
-operate on objects with many fields, and create codecs with complex field
-encodings.
-
-    foldcoder : Codec Session
-    foldcoder =
-        let setQueue q s = { s | queue = q } in
-        let setPlaying p s = { s | playing = p } in
-        let setLikeCats l s = { s | likeCategories = l } in
-        JsonCodec.fold
-            [ JsonCodec.foldField "queue"
-                (setQueue, JD.list JD.string)
-                (.queue >> List.map JE.string >> JE.list)
-            , JsonCodec.foldField "playing"
-                (setPlaying, JsonCodec.decoder playingSerializer)
-                (.playing >> JsonCodec.encoder playingSerializer)
-            , JsonCodec.foldField "like"
-                (setLikeCats, JD.dict JD.int)
-                (.likeCategories
-                >> Dict.map (always JE.int) >> Dict.toList >> JE.object
-                )
-            ]
-            { queue = [], playing = Nothing, likeCategories = Dict.empty }
-
--}
-fold : List (String, JD.Value -> a -> Result String a, a -> JE.Value) -> a -> Codec a
-fold tups init =
-    let
-        foldfun : JD.Value -> (String, JD.Value -> a -> Result String a, a -> JE.Value) -> (Result String a) -> Result String a
-        foldfun v (n,d,_) = Result.andThen (d v)
-    in
-    (   JD.value
-    |>  JD.andThen
-            (\v ->
-                List.foldl (foldfun v) (Ok init) tups
-                |> Result.map JD.succeed
-                |> Result.mapError JD.fail
-                |> Result.Extra.merge
-            )
-    ,   \v -> tups |> List.map (\(n,_,e) -> (n,e v)) |> JE.object
+next : String -> Codec v -> (o -> v) -> (JD.Decoder (v -> b), o -> List (String, JE.Value)) -> (JD.Decoder b, o -> List (String, JE.Value))
+next field cod extract (dd,ee) =
+    ( restDec field (decoder cod) dd
+    , restEnc field (encoder cod) extract ee
     )
+
+end : (JD.Decoder o, o -> List (String,JE.Value)) -> Codec o
+end (dec,enc) =
+    init dec (\v -> enc v |> JE.object)
