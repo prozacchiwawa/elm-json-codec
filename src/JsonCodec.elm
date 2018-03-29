@@ -38,7 +38,7 @@ both the encoder and the decoder for a type, reducing some duplication and
 redundancy.  In simple cases, a codec can be built exclusively by composing
 other codecs.
 
-In more complex cases, ```fold``` could be used, which allows fields to be
+In more complex cases, ```first``` could be used, which allows fields to be
 encoded and extracted separately.
 
 To just specify a decoder and encoder separately, use ```init```.
