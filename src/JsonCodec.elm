@@ -120,7 +120,8 @@ To just specify a decoder and encoder separately, use ```init```.
         |> JC.first "i" JC.int .i
         |> JC.next "b" JC.bool .b
         |> JC.next "f" JC.float .f
-        |> JC.end "s" JC.string .s
+        |> JC.next "s" JC.string .s
+        |> JC.end
 
     x = JD.decodeString (JC.decoder be) "{\"i\":3,\"b\":false,\"f\":3.14,\"s\":\"hi there\"}"
     -- Ok { i = 3, b = False, f = 3.14, s = "hi there" }
