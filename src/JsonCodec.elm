@@ -112,7 +112,7 @@ To just specify a decoder and encoder separately, use ```init```.
             ("playing", playingSerializer)
             ("like", JsonCodec.dict JsonCodec.int)
 
-    -- Codec built in applicative style
+    -- Codec built in application style
     type alias Test = { i : Int, b : Bool, f : Float, s : String }
 
     codec = 
