@@ -150,249 +150,243 @@ import Array exposing (Array)
 import Dict exposing (Dict)
 import Json.Decode as JD
 import Json.Encode as JE
-import Result.Extra
 
 {-| The type of codecs constructed by the library.
 
 You can extract a Json.Decode.Decoder with ```decoder``` and a function that
 constructs ```Json.Encoder.Value``` with ```encoder```.
 -}
-type alias Codec a = (JD.Decoder a, a -> JE.Value)
+type Codec a = Codec (JD.Decoder a, a -> JE.Value)
 
 {-| Type of a codec builder used with ```first```, ```next``` and ```end``` -}
 type Builder a b = CB a b
 
 {-| Codec matching and producing strings. -}
 string : Codec String
-string = (JD.string, JE.string)
+string = Codec (JD.string, JE.string)
 
 {-| Codec matching and producing bools. -}
 bool : Codec Bool
-bool = (JD.bool, JE.bool)
+bool = Codec (JD.bool, JE.bool)
 
 {-| Codec matching and producing ints. -}
 int : Codec Int
-int = (JD.int, JE.int)
+int = Codec (JD.int, JE.int)
 
 {-| Codec matching and producing floats. -}
 float : Codec Float
-float = (JD.float, JE.float)
+float = Codec (JD.float, JE.float)
 
 {-| Codec that maps null to Nothing and vice versa. -}
 nullable : Codec a -> Codec (Maybe a)
-nullable d = (JD.nullable (Tuple.first d), (Maybe.map (Tuple.second d)) >> Maybe.withDefault JE.null)
+nullable d = Codec (JD.nullable (decoder d), (Maybe.map (encoder d)) >> Maybe.withDefault JE.null)
 
 {-| Codec that produces and consumes lists. -}
 list : Codec a -> Codec (List a)
-list d = (JD.list (Tuple.first d), JE.list << (List.map (Tuple.second d)))
+list d =
+    Codec (JD.list (decoder d), JE.list (encoder d))
 
 {-| Codec that produces and consumes arrays. -}
 array : Codec a -> Codec (Array a)
-array d = (JD.array (Tuple.first d), JE.array << (Array.map (Tuple.second d)))
+array d =
+    Codec (JD.array (decoder d), JE.array (encoder d))
 
 {-| Codec that produces and consumes dictionaries of other values. -}
 dict : Codec a -> Codec (Dict String a)
-dict d = (JD.dict (Tuple.first d), Dict.toList >> List.map (\(k,v) -> (k,(Tuple.second d) v)) >> JE.object)
+dict d = Codec (JD.dict (decoder d), Dict.toList >> List.map (\(k,v) -> (k,(encoder d) v)) >> JE.object)
 
 {-| Codec that produces and consumes key value pair lists of other values. -}
 keyValuePairs : Codec a -> Codec (List (String, a))
 keyValuePairs d =
-    (JD.keyValuePairs (Tuple.first d), List.map (\(k,v) -> (k,(Tuple.second d) v)) >> JE.object)
+    Codec (JD.keyValuePairs (decoder d), List.map (\(k,v) -> (k,(encoder d) v)) >> JE.object)
 
 {-| Codec that matches a single field similar to Json.Decode and produces a
 singleton object with 1 field. -}
 singleton : String -> Codec a -> Codec a
 singleton name d =
-    (JD.field name (Tuple.first d), \v -> JE.object [(name, (Tuple.second d) v)])
+    Codec (JD.field name (decoder d), \v -> JE.object [(name, (encoder d) v)])
 
 {-| Codec that matches and produces objects with 2 given named fields. -}
 object2 :
     (a -> b -> x) ->
-    (x -> (a,b)) ->
-    (String,Codec a) ->
-    (String,Codec b) ->
+    (String,Codec a,x -> a) ->
+    (String,Codec b,x -> b) ->
     Codec x
-object2 decodefun encodefun (n1,d1) (n2,d2) =
-    ( JD.map2 decodefun (JD.field n1 (Tuple.first d1)) (JD.field n2 (Tuple.first d2))
+object2 decodefun (n1,d1,x1) (n2,d2,x2) =
+    Codec
+    ( JD.map2 decodefun (JD.field n1 (decoder d1)) (JD.field n2 (decoder d2))
     , \x ->
-        let (a,b) = encodefun x in
         JE.object
-            [ (n1,(Tuple.second d1) a)
-            , (n2,(Tuple.second d2) b)
+            [ (n1,(encoder d1) (x1 x))
+            , (n2,(encoder d2) (x2 x))
             ]
     )
 
 {-| Codec that matches and produces objects with 3 given named fields. -}
 object3 :
     (a -> b -> c -> x) ->
-    (x -> (a,b,c)) ->
-    (String,Codec a) ->
-    (String,Codec b) ->
-    (String,Codec c) ->
+    (String,Codec a,x -> a) ->
+    (String,Codec b,x -> b) ->
+    (String,Codec c,x -> c) ->
     Codec x
-object3 decodefun encodefun (n1,d1) (n2,d2) (n3,d3) =
-    ( JD.map3 decodefun (JD.field n1 (Tuple.first d1)) (JD.field n2 (Tuple.first d2)) (JD.field n3 (Tuple.first d3))
+object3 decodefun (n1,d1,x1) (n2,d2,x2) (n3,d3,x3) =
+    Codec
+    ( JD.map3 decodefun (JD.field n1 (decoder d1)) (JD.field n2 (decoder d2)) (JD.field n3 (decoder d3))
     , \x ->
-        let (a,b,c) = encodefun x in
         JE.object
-            [ (n1,(Tuple.second d1) a)
-            , (n2,(Tuple.second d2) b)
-            , (n3,(Tuple.second d3) c)
+            [ (n1,(encoder d1) (x1 x))
+            , (n2,(encoder d2) (x2 x))
+            , (n3,(encoder d3) (x3 x))
             ]
     )
 
 {-| Codec that matches and produces objects with 4 given named fields. -}
 object4 :
     (a -> b -> c -> d -> x) ->
-    (x -> (a,b,c,d)) ->
-    (String,Codec a) ->
-    (String,Codec b) ->
-    (String,Codec c) ->
-    (String,Codec d) ->
+    (String,Codec a, x -> a) ->
+    (String,Codec b, x -> b) ->
+    (String,Codec c, x -> c) ->
+    (String,Codec d, x -> d) ->
     Codec x
-object4 decodefun encodefun (n1,d1) (n2,d2) (n3,d3) (n4,d4) =
+object4 decodefun (n1,d1,x1) (n2,d2,x2) (n3,d3,x3) (n4,d4,x4) =
+    Codec
     ( JD.map4 decodefun
-        (JD.field n1 (Tuple.first d1))
-        (JD.field n2 (Tuple.first d2))
-        (JD.field n3 (Tuple.first d3))
-        (JD.field n4 (Tuple.first d4))
+        (JD.field n1 (decoder d1))
+        (JD.field n2 (decoder d2))
+        (JD.field n3 (decoder d3))
+        (JD.field n4 (decoder d4))
     , \x ->
-        let (a,b,c,d) = encodefun x in
         JE.object
-            [ (n1,(Tuple.second d1) a)
-            , (n2,(Tuple.second d2) b)
-            , (n3,(Tuple.second d3) c)
-            , (n4,(Tuple.second d4) d)
+            [ (n1,(encoder d1) (x1 x))
+            , (n2,(encoder d2) (x2 x))
+            , (n3,(encoder d3) (x3 x))
+            , (n4,(encoder d4) (x4 x))
             ]
     )
 
 {-| Codec that matches and produces objects with 5 given named fields. -}
 object5 :
     (a -> b -> c -> d -> e -> x) ->
-    (x -> (a,b,c,d,e)) ->
-    (String,Codec a) ->
-    (String,Codec b) ->
-    (String,Codec c) ->
-    (String,Codec d) ->
-    (String,Codec e) ->
+    (String,Codec a,x -> a) ->
+    (String,Codec b,x -> b) ->
+    (String,Codec c,x -> c) ->
+    (String,Codec d,x -> d) ->
+    (String,Codec e,x -> e) ->
     Codec x
-object5 decodefun encodefun (n1,d1) (n2,d2) (n3,d3) (n4,d4) (n5,d5) =
+object5 decodefun (n1,d1,x1) (n2,d2,x2) (n3,d3,x3) (n4,d4,x4) (n5,d5,x5) =
+    Codec
     ( JD.map5 decodefun
-        (JD.field n1 (Tuple.first d1))
-        (JD.field n2 (Tuple.first d2))
-        (JD.field n3 (Tuple.first d3))
-        (JD.field n4 (Tuple.first d4))
-        (JD.field n5 (Tuple.first d5))
+        (JD.field n1 (decoder d1))
+        (JD.field n2 (decoder d2))
+        (JD.field n3 (decoder d3))
+        (JD.field n4 (decoder d4))
+        (JD.field n5 (decoder d5))
     , \x ->
-        let (a,b,c,d,e) = encodefun x in
         JE.object
-            [ (n1,(Tuple.second d1) a)
-            , (n2,(Tuple.second d2) b)
-            , (n3,(Tuple.second d3) c)
-            , (n4,(Tuple.second d4) d)
-            , (n5,(Tuple.second d5) e)
+            [ (n1,(encoder d1) (x1 x))
+            , (n2,(encoder d2) (x2 x))
+            , (n3,(encoder d3) (x3 x))
+            , (n4,(encoder d4) (x4 x))
+            , (n5,(encoder d5) (x5 x))
             ]
     )
 
 {-| Codec that matches and produces objects with 6 given named fields. -}
 object6 :
     (a -> b -> c -> d -> e -> f -> x) ->
-    (x -> (a,b,c,d,e,f)) ->
-    (String,Codec a) ->
-    (String,Codec b) ->
-    (String,Codec c) ->
-    (String,Codec d) ->
-    (String,Codec e) ->
-    (String,Codec f) ->
+    (String,Codec a,x -> a) ->
+    (String,Codec b,x -> b) ->
+    (String,Codec c,x -> c) ->
+    (String,Codec d,x -> d) ->
+    (String,Codec e,x -> e) ->
+    (String,Codec f,x -> f) ->
     Codec x
-object6 decodefun encodefun (n1,d1) (n2,d2) (n3,d3) (n4,d4) (n5,d5) (n6,d6) =
+object6 decodefun (n1,d1,x1) (n2,d2,x2) (n3,d3,x3) (n4,d4,x4) (n5,d5,x5) (n6,d6,x6) =
+    Codec
     ( JD.map6 decodefun
-        (JD.field n1 (Tuple.first d1))
-        (JD.field n2 (Tuple.first d2))
-        (JD.field n3 (Tuple.first d3))
-        (JD.field n4 (Tuple.first d4))
-        (JD.field n5 (Tuple.first d5))
-        (JD.field n6 (Tuple.first d6))
+        (JD.field n1 (decoder d1))
+        (JD.field n2 (decoder d2))
+        (JD.field n3 (decoder d3))
+        (JD.field n4 (decoder d4))
+        (JD.field n5 (decoder d5))
+        (JD.field n6 (decoder d6))
     , \x ->
-        let (a,b,c,d,e,f) = encodefun x in
         JE.object
-            [ (n1,(Tuple.second d1) a)
-            , (n2,(Tuple.second d2) b)
-            , (n3,(Tuple.second d3) c)
-            , (n4,(Tuple.second d4) d)
-            , (n5,(Tuple.second d5) e)
-            , (n6,(Tuple.second d6) f)
+            [ (n1,(encoder d1) (x1 x))
+            , (n2,(encoder d2) (x2 x))
+            , (n3,(encoder d3) (x3 x))
+            , (n4,(encoder d4) (x4 x))
+            , (n5,(encoder d5) (x5 x))
+            , (n6,(encoder d6) (x6 x))
             ]
     )
 
 {-| Codec that matches and produces objects with 7 given named fields. -}
 object7 :
     (a -> b -> c -> d -> e -> f -> g -> x) ->
-    (x -> (a,b,c,d,e,f,g)) ->
-    (String,Codec a) ->
-    (String,Codec b) ->
-    (String,Codec c) ->
-    (String,Codec d) ->
-    (String,Codec e) ->
-    (String,Codec f) ->
-    (String,Codec g) ->
+    (String,Codec a,x -> a) ->
+    (String,Codec b,x -> b) ->
+    (String,Codec c,x -> c) ->
+    (String,Codec d,x -> d) ->
+    (String,Codec e,x -> e) ->
+    (String,Codec f,x -> f) ->
+    (String,Codec g,x -> g) ->
     Codec x
-object7 decodefun encodefun (n1,d1) (n2,d2) (n3,d3) (n4,d4) (n5,d5) (n6,d6) (n7,d7) =
+object7 decodefun (n1,d1,x1) (n2,d2,x2) (n3,d3,x3) (n4,d4,x4) (n5,d5,x5) (n6,d6,x6) (n7,d7,x7) =
+    Codec
     ( JD.map7 decodefun
-        (JD.field n1 (Tuple.first d1))
-        (JD.field n2 (Tuple.first d2))
-        (JD.field n3 (Tuple.first d3))
-        (JD.field n4 (Tuple.first d4))
-        (JD.field n5 (Tuple.first d5))
-        (JD.field n6 (Tuple.first d6))
-        (JD.field n7 (Tuple.first d7))
+        (JD.field n1 (decoder d1))
+        (JD.field n2 (decoder d2))
+        (JD.field n3 (decoder d3))
+        (JD.field n4 (decoder d4))
+        (JD.field n5 (decoder d5))
+        (JD.field n6 (decoder d6))
+        (JD.field n7 (decoder d7))
     , \x ->
-        let (a,b,c,d,e,f,g) = encodefun x in
         JE.object
-            [ (n1,(Tuple.second d1) a)
-            , (n2,(Tuple.second d2) b)
-            , (n3,(Tuple.second d3) c)
-            , (n4,(Tuple.second d4) d)
-            , (n5,(Tuple.second d5) e)
-            , (n6,(Tuple.second d6) f)
-            , (n7,(Tuple.second d7) g)
+            [ (n1,(encoder d1) (x1 x))
+            , (n2,(encoder d2) (x2 x))
+            , (n3,(encoder d3) (x3 x))
+            , (n4,(encoder d4) (x4 x))
+            , (n5,(encoder d5) (x5 x))
+            , (n6,(encoder d6) (x6 x))
+            , (n7,(encoder d7) (x7 x))
             ]
     )
 
 {-| Codec that matches and produces objects with 8 given named fields. -}
 object8 :
     (a -> b -> c -> d -> e -> f -> g -> h -> x) ->
-    (x -> (a,b,c,d,e,f,g,h)) ->
-    (String,Codec a) ->
-    (String,Codec b) ->
-    (String,Codec c) ->
-    (String,Codec d) ->
-    (String,Codec e) ->
-    (String,Codec f) ->
-    (String,Codec g) ->
-    (String,Codec h) ->
+    (String,Codec a,x -> a) ->
+    (String,Codec b,x -> b) ->
+    (String,Codec c,x -> c) ->
+    (String,Codec d,x -> d) ->
+    (String,Codec e,x -> e) ->
+    (String,Codec f,x -> f) ->
+    (String,Codec g,x -> g) ->
+    (String,Codec h,x -> h) ->
     Codec x
-object8 decodefun encodefun (n1,d1) (n2,d2) (n3,d3) (n4,d4) (n5,d5) (n6,d6) (n7,d7) (n8,d8) =
+object8 decodefun (n1,d1,x1) (n2,d2,x2) (n3,d3,x3) (n4,d4,x4) (n5,d5,x5) (n6,d6,x6) (n7,d7,x7) (n8,d8,x8) =
+    Codec
     ( JD.map8 decodefun
-        (JD.field n1 (Tuple.first d1))
-        (JD.field n2 (Tuple.first d2))
-        (JD.field n3 (Tuple.first d3))
-        (JD.field n4 (Tuple.first d4))
-        (JD.field n5 (Tuple.first d5))
-        (JD.field n6 (Tuple.first d6))
-        (JD.field n7 (Tuple.first d7))
-        (JD.field n8 (Tuple.first d8))
+        (JD.field n1 (decoder d1))
+        (JD.field n2 (decoder d2))
+        (JD.field n3 (decoder d3))
+        (JD.field n4 (decoder d4))
+        (JD.field n5 (decoder d5))
+        (JD.field n6 (decoder d6))
+        (JD.field n7 (decoder d7))
+        (JD.field n8 (decoder d8))
     , \x ->
-        let (a,b,c,d,e,f,g,h) = encodefun x in
         JE.object
-            [ (n1,(Tuple.second d1) a)
-            , (n2,(Tuple.second d2) b)
-            , (n3,(Tuple.second d3) c)
-            , (n4,(Tuple.second d4) d)
-            , (n5,(Tuple.second d5) e)
-            , (n6,(Tuple.second d6) f)
-            , (n7,(Tuple.second d7) g)
-            , (n8,(Tuple.second d8) h)
+            [ (n1,(encoder d1) (x1 x))
+            , (n2,(encoder d2) (x2 x))
+            , (n3,(encoder d3) (x3 x))
+            , (n4,(encoder d4) (x4 x))
+            , (n5,(encoder d5) (x5 x))
+            , (n6,(encoder d6) (x6 x))
+            , (n7,(encoder d7) (x7 x))
+            , (n8,(encoder d8) (x8 x)) 
             ]
     )
 
@@ -413,30 +407,30 @@ object8 decodefun encodefun (n1,d1) (n2,d2) (n3,d3) (n4,d4) (n5,d5) (n6,d6) (n7,
 
 -}
 map : (a -> b) -> (b -> a) -> Codec a -> Codec b
-map f g d = (Tuple.first d |> JD.map f, \e -> (Tuple.second d) (g e))
+map f g d = Codec (decoder d |> JD.map f, \e -> (encoder d) (g e))
 
 {-| Match one of many decoders, encode using the given function. -}
 oneOf : List (JD.Decoder a) -> (a -> JE.Value) -> Codec a
 oneOf dl enc =
-    (JD.oneOf dl, enc)
+    Codec (JD.oneOf dl, enc)
 
 {-| Codec that matches null, produces null. -}
 null : a -> Codec a
-null v = (JD.null v, always JE.null)
+null v = Codec (JD.null v, always JE.null)
 
 {-| Codec that produces a constant decoded value and encodes to a constant value.
 One might use this to check a field with a constant value, such as a version
 number.
 -}
 succeed : a -> JE.Value -> Codec a
-succeed vi vo = (JD.succeed vi, always vo)
+succeed vi vo = Codec (JD.succeed vi, always vo)
 
 {-| Codec that produces a constant encoded value but always fails decoding.
 One might use this while prefiltering inputs based on their structure but ensure
 that encoded json has the right structure.
 -}
 fail : String -> JE.Value -> Codec a
-fail err vo = (JD.fail err, always vo)
+fail err vo = Codec (JD.fail err, always vo)
 
 {-| Like map, but the decode function returns a decoder that will be evaluated
 next, rather than just mapping the value.
@@ -458,19 +452,20 @@ next, rather than just mapping the value.
             )
 -}
 andThen : (a -> JD.Decoder b) -> (b -> a) -> Codec a -> Codec b
-andThen f g d = (Tuple.first d |> JD.andThen f, \e -> (Tuple.second d) (g e))
+andThen f g d =
+    Codec (decoder d |> JD.andThen f, \e -> (encoder d) (g e))
 
 {-| Get a Json.Decode.Decoder from a codec. -}
 decoder : Codec a -> JD.Decoder a
-decoder = Tuple.first
+decoder (Codec (d,e)) = d
 
 {-| Get a function that encodes Json.Encode.Value from a codec. -}
 encoder : Codec a -> (a -> JE.Value)
-encoder = Tuple.second
+encoder (Codec (d,e)) = e
 
 {-| Construct an arbitrary codec from a decoder and an encoder function. -}
 init : JD.Decoder a -> (a -> JE.Value) -> Codec a
-init = (,)
+init a b = Codec (a,b)
 
 {-| Application style codec creation.  Provide a field at a time to build up an
 arbitrarily large codec.  Start with first, use next to add fields in the middle
