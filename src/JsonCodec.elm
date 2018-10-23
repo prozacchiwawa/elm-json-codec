@@ -29,6 +29,7 @@ module JsonCodec exposing
     , init
     , first
     , next
+    , option
     , end
     )
 
@@ -544,6 +545,27 @@ next field cod extract (CB dd ee) =
         (restDec field (decoder cod) dd)
         (restEnc field (encoder cod) extract ee)
 
+{-| Allow pipelines to decode optional fields, not just optional values. -}
+option : String -> Codec v -> (o -> v) -> v -> Builder (JD.Decoder (v -> b)) (o -> List (String, JE.Value)) -> Builder (JD.Decoder b) (o -> List (String, JE.Value))
+option field cod extract default (CB dd ee) =
+    let
+        hasField db =
+            JD.oneOf
+                [ JD.field field db
+                , JD.succeed default
+                ]
+        
+        restOpt db da =
+            JD.andThen
+                (\sas ->
+                     JD.map sas (hasField db)
+                )
+                da
+    in
+    CB
+        (restOpt (decoder cod) dd)
+        (restEnc field (encoder cod) extract ee)
+    
 {-| Make the final step to turn a result from Builder into Codec. -}
 end : Builder (JD.Decoder o) (o -> List (String,JE.Value)) -> Codec o
 end (CB dec enc) =
