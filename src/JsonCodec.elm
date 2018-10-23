@@ -97,10 +97,9 @@ To just specify a decoder and encoder separately, use ```init```.
     playingSerializer =
         JsonCodec.nullable
             (JsonCodec.object2
-                (,)
-                identity
-                ("u", JsonCodec.string)
-                ("p", JsonCodec.float)
+                 (\a b -> (a,b))
+                 ("u", JsonCodec.string, Tuple.first)
+                 ("p", JsonCodec.float, Tuple.second)
             )
 
     -- Simple codec built with composition.
@@ -108,25 +107,29 @@ To just specify a decoder and encoder separately, use ```init```.
     serializer =
         JsonCodec.object3
             Session
-            (\s -> (s.queue,s.playing,s.likeCategories))
-            ("queue", JsonCodec.list JsonCodec.string)
-            ("playing", playingSerializer)
-            ("like", JsonCodec.dict JsonCodec.int)
+            ("queue", JsonCodec.list JsonCodec.string, .queue)
+            ("playing", playingSerializer, .playing)
+            ("like", JsonCodec.dict JsonCodec.int, .likeCategories)
 
     -- Codec built in application style
-    type alias Test = { i : Int, b : Bool, f : Float, s : String }
+    type alias Test = 
+        { i : Int, b : Bool, f : Float, o : Maybe String, s : String }
 
     codec = 
         Test
-        |> JC.first "i" JC.int .i
-        |> JC.next "b" JC.bool .b
-        |> JC.next "f" JC.float .f
-        |> JC.next "s" JC.string .s
+        |> JC.first  "i" JC.int .i
+        |> JC.next   "b" JC.bool .b
+        |> JC.next   "f" JC.float .f
+        |> JC.option "o" (JC.nullable JC.string) .o Nothing
+        |> JC.next   "s" JC.string .s
         |> JC.end
 
-    x = JD.decodeString (JC.decoder be) "{\"i\":3,\"b\":false,\"f\":3.14,\"s\":\"hi there\"}"
-    -- Ok { i = 3, b = False, f = 3.14, s = "hi there" }
-
+    x = JD.decodeString (JC.decoder be) 
+         "{\"i\":3,\"b\":false,\"f\":3.14,\"s\":\"hi there\"}"
+    -- Ok { b = False, f = 3.14, i = 3, o = Nothing, s = "hi there" }
+    y = JD.decodeString (JC.decoder codec)
+        "{\"i\":3,\"b\":false,\"f\":3.14,\"o\":\"hi\",\"s\":\"hi there\"}"
+    -- Ok { b = False, f = 3.14, i = 3, o = Just "hi", s = "hi there" }
 # Type
 @docs Codec, Builder
 
@@ -143,7 +146,7 @@ To just specify a decoder and encoder separately, use ```init```.
 @docs decoder, encoder, init
 
 # Application
-@docs first, next, end
+@docs first, next, option, end
 
 -}
 
