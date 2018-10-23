@@ -3,7 +3,7 @@
     "name": "prozacchiwawa/elm-json-codec",
     "summary": "A library for composing json encoders and decoders simultaneously in elm",
     "license": "MIT",
-    "version": "3.0.0",
+    "version": "3.1.0",
     "exposed-modules": [
         "JsonCodec"
     ],
