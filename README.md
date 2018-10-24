@@ -2,6 +2,8 @@
 
 A library for creating combined encoders and decoders for Json in Elm, allowing composition.
 
+With contributions from <a href='https://github.com/francescortiz'>francescortiz</a>
+
 ```
 module Test exposing (..)
 
