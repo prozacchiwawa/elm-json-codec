@@ -15,6 +15,15 @@ codec =
         |> JC.next   "s" JC.string .s
         |> JC.end
 
+codec2 =
+    Test
+        |> JC.firstOpt  "i" JC.int .i -1
+        |> JC.next   "b" JC.bool .b
+        |> JC.next   "f" JC.float .f
+        |> JC.option "o" (JC.nullable JC.string) .o Nothing
+        |> JC.next   "s" JC.string .s
+        |> JC.end
+           
 x =
     JD.decodeString (JC.decoder codec)
         "{\"i\":3,\"b\":false,\"f\":3.14,\"s\":\"hi there\"}"

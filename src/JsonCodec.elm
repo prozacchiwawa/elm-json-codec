@@ -28,6 +28,7 @@ module JsonCodec exposing
     , encoder
     , init
     , first
+    , firstOpt
     , next
     , option
     , end
@@ -539,6 +540,22 @@ first field cod extract inp =
         (firstDec field (decoder cod) inp)
         (firstEnc field (encoder cod) extract)
 
+{-| Begin decoding with an optional field.  As ```first``` but a default value is added. -}
+firstOpt : String -> Codec v -> (o -> v) -> v -> (v -> b) -> Builder (JD.Decoder b) (o -> List (String, JE.Value))
+firstOpt field cod extract def inp =
+    let
+        hasField db =
+            JD.oneOf
+                [ JD.field field db
+                , JD.succeed def
+                ]
+
+        firstDO dec i = JD.map i (hasField dec)
+    in
+    CB
+        (firstDO        (decoder cod) inp)
+        (firstEnc field (encoder cod) extract)
+            
 {-| Continue a partial codec from first, satisfying one more parameter of the
 constructor function.
 -}
