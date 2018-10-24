@@ -150,7 +150,7 @@ To just specify a decoder and encoder separately, use ```init```.
 @docs decoder, encoder, init
 
 # Application
-@docs first, firstOpt, next, option, end
+@docs start, first, firstOpt, next, option, end
 
 -}
 
