@@ -30,6 +30,7 @@ module JsonCodec exposing
     , first
     , firstOpt
     , next
+    , start
     , option
     , end
     )
@@ -488,19 +489,40 @@ and then convert it into a codec with end.
     x = JD.decodeString (JC.decoder be) "{\"i\":3,\"b\":false,\"f\":3.14,\"s\":\"hi there\"}"
     -- Ok { i = 3, b = False, f = 3.14, s = "hi there" }
 -}
+startDec :  b -> JD.Decoder b
+startDec  inp = (JD.succeed inp)
+
+
 firstDec : String -> JD.Decoder a -> (a -> b) -> JD.Decoder b
 firstDec field dec inp = JD.map inp (JD.field field dec)
 
 restDec : String -> JD.Decoder x -> JD.Decoder (x -> y) -> JD.Decoder y
 restDec field db da = JD.andThen (\sas -> JD.map sas (JD.field field db)) da
 
+
+startEnc :  (o -> List (String,JE.Value))
+startEnc  =
+    \v -> []
+
+
 firstEnc : String -> (v -> JE.Value) -> (o -> v) -> (o -> List (String,JE.Value))
 firstEnc field enc extract =
     \v -> [(field, enc (extract v))]
 
+
 restEnc : String -> (v -> JE.Value) -> (o -> v) -> (o -> List (String,JE.Value)) -> (o -> List (String,JE.Value))
 restEnc field enc extract prev =
     \v -> (field, enc (extract v)) :: (prev v)
+
+
+{-| Start composing a codec.
+-}
+start :  b -> Builder (JD.Decoder b) (o -> List (String, JE.Value))
+start  inp =
+    CB
+        (startDec inp)
+        (startEnc )
+
 
 {-| Start composing a codec to decode a record using a series of function
 applications.

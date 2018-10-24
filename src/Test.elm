@@ -23,7 +23,16 @@ codec2 =
         |> JC.option "o" (JC.nullable JC.string) .o Nothing
         |> JC.next   "s" JC.string .s
         |> JC.end
-           
+
+codec3 =
+    JC.start Test
+        |> JC.option  "i" JC.int .i -1
+        |> JC.next   "b" JC.bool .b
+        |> JC.next   "f" JC.float .f
+        |> JC.option "o" (JC.nullable JC.string) .o Nothing
+        |> JC.next   "s" JC.string .s
+        |> JC.end
+
 x =
     JD.decodeString (JC.decoder codec)
         "{\"i\":3,\"b\":false,\"f\":3.14,\"s\":\"hi there\"}"
