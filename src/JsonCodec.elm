@@ -41,7 +41,7 @@ both the encoder and the decoder for a type, reducing some duplication and
 redundancy.  In simple cases, a codec can be built exclusively by composing
 other codecs.
 
-Contributions by <a href='https://github.com/francescortiz'>francescortiz</a>
+Contributions by [francescortiz](https://github.com/francescortiz)
 
 In more complex cases, ```first``` could be used, which allows fields to be
 encoded and extracted separately.
